@@ -1,0 +1,2 @@
+{"id": "T01", "question": "旅遊平安險的班機延誤要延誤多久才能理賠？", "lang": "zh", "category": "doc-only", "expected_citations": ["travel-insurance#3.1"], "expected_tools": ["search_policy_docs"], "expected_status": "answered", "reference_answer": "延誤超過 6 小時。", "must_include": ["6"]}
+{"id": "T02", "question": "保單 NW-TRV-0001 現在的狀態是什麼？", "lang": "zh", "category": "tool-only", "expected_citations": [], "expected_tools": ["get_policy"], "expected_status": "answered", "reference_answer": "保單有效（active）。", "must_include": []}
