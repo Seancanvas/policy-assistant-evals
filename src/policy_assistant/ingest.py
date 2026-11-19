@@ -79,7 +79,27 @@ def split_sections(text: str) -> list[Chunk]:
 
 def load_chunks(docs_dir: Path) -> list[Chunk]:
     """Read every *.md file in docs_dir (sorted, so the order is stable) and split it."""
-    raise NotImplementedError("TODO day 1")
+    paths = sorted(docs_dir.glob("*.md"))
+    if not paths:
+        raise ValueError(f"No .md files found in {docs_dir}")
+
+    chunks: list[Chunk] = []
+    seen: dict[str, str] = {}
+    for path in paths:
+        try:
+            doc_chunks = split_sections(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise ValueError(f"{path.name}: {exc}") from exc
+        for chunk in doc_chunks:
+            if chunk.citation_id in seen:
+                raise ValueError(
+                    f"Duplicate citation_id {chunk.citation_id!r} "
+                    f"in {seen[chunk.citation_id]} and {path.name}"
+                )
+            seen[chunk.citation_id] = path.name
+        chunks.extend(doc_chunks)
+
+    return chunks
 
 
 def build_index(chunks: list[Chunk], index_dir: Path, client, embedding_model: str) -> None:
