@@ -2,9 +2,14 @@
 
 Run: uv run python -m policy_assistant.ingest
 """
-
+import hashlib
+import json
 from pathlib import Path
 
+import numpy as np
+from openai import OpenAI
+
+from policy_assistant.config import DOCS_DIR, INDEX_DIR, load_settings
 from policy_assistant.models import Chunk
 
 
@@ -102,19 +107,82 @@ def load_chunks(docs_dir: Path) -> list[Chunk]:
     return chunks
 
 
-def build_index(chunks: list[Chunk], index_dir: Path, client, embedding_model: str) -> None:
+BATCH_SIZE = 100
+
+
+def embedding_text(chunk: Chunk) -> str:
+    return f"{chunk.title}\n{chunk.text}"
+
+
+def content_hash(text: str, embedding_model: str) -> str:
+    # The model is part of the key: a vector from another model is not reusable.
+    return hashlib.sha256(f"{embedding_model}\n{text}".encode()).hexdigest()
+
+
+def _load_cache(index_dir: Path) -> dict[str, np.ndarray]:
+    chunks_path = index_dir / "chunks.json"
+    vectors_path = index_dir / "embeddings.npy"
+    if not (chunks_path.exists() and vectors_path.exists()):
+        return {}
+    records = json.loads(chunks_path.read_text(encoding="utf-8"))
+    vectors = np.load(vectors_path)
+    if len(records) != len(vectors):
+        return {}  # Inconsistent index: rebuild everything rather than trust it.
+    return {
+        r["content_hash"]: v
+        for r, v in zip(records, vectors, strict=True)
+        if "content_hash" in r
+    }
+
+
+def _embed(client, embedding_model: str, texts: list[str]) -> list[list[float]]:
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), BATCH_SIZE):
+        batch = texts[start : start + BATCH_SIZE]
+        response = client.embeddings.create(model=embedding_model, input=batch)
+        items = sorted(response.data, key=lambda item: item.index)
+        if len(items) != len(batch):
+            raise RuntimeError(f"Expected {len(batch)} embeddings, got {len(items)}")
+        vectors.extend(item.embedding for item in items)
+    return vectors
+
+
+def build_index(chunks: list[Chunk], index_dir: Path, client, embedding_model: str) -> int:
     """Embed every chunk and write index_dir/chunks.json and index_dir/embeddings.npy.
 
-    TODO day 1:
-    - Embed title + text, in batches (client.embeddings.create(model=..., input=[...])).
-    - Cache: store a hash of each chunk's content and skip re-embedding unchanged chunks,
-      so re-running ingest does not cost money.
+    Row i of embeddings.npy is the vector for record i of chunks.json. Chunks whose
+    content and model are unchanged reuse the cached vector, so re-running costs nothing.
+    Returns the number of chunks that were sent to the API.
     """
-    raise NotImplementedError("TODO day 1")
+    if not chunks:
+        raise ValueError("No chunks to index")
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    texts = [embedding_text(c) for c in chunks]
+    hashes = [content_hash(t, embedding_model) for t in texts]
+    cache = _load_cache(index_dir)
+
+    missing = [i for i, h in enumerate(hashes) if h not in cache]
+    new_vectors = _embed(client, embedding_model, [texts[i] for i in missing])
+    for i, vector in zip(missing, new_vectors, strict=True):
+        cache[hashes[i]] = np.asarray(vector, dtype=np.float32)
+
+    matrix = np.stack([cache[h] for h in hashes]).astype(np.float32)
+    records = [c.model_dump() | {"content_hash": h} for c, h in zip(chunks, hashes, strict=True)]
+
+    np.save(index_dir / "embeddings.npy", matrix)
+    (index_dir / "chunks.json").write_text(
+        json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return len(missing)
 
 
 def main() -> None:
-    raise NotImplementedError("TODO day 1: load settings, load_chunks, build_index")
+    settings = load_settings()
+    chunks = load_chunks(DOCS_DIR)
+    embedded = build_index(chunks, INDEX_DIR, OpenAI(), settings.embedding_model)
+    print(f"Indexed {len(chunks)} chunks into {INDEX_DIR} ({embedded} embedded, "
+          f"{len(chunks) - embedded} from cache)")
 
 
 if __name__ == "__main__":
