@@ -8,11 +8,23 @@ def test_parse_front_matter(sample_doc):
     assert meta["doc_id"] == "sample-doc"
     assert meta["lang"] == "en"
     assert "## 1.1" in body
+    assert body.startswith("# Sample policy")
+    assert "doc_id" not in body
 
 
 def test_missing_front_matter_raises():
     with pytest.raises(ValueError):
         parse_front_matter("## 1.1 No front matter\ntext")
+
+
+def test_unclosed_front_matter_raises():
+    with pytest.raises(ValueError, match="closing"):
+        parse_front_matter("---\ndoc_id: x\n## 1.1 Clause\ntext")
+
+
+def test_front_matter_tolerates_extra_spaces():
+    meta, _ = parse_front_matter("---\nlang:  en \n\nversion:2026-01\n---\nbody")
+    assert meta == {"lang": "en", "version": "2026-01"}
 
 
 def test_split_sections_one_chunk_per_clause(sample_doc):

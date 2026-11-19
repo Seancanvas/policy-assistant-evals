@@ -13,7 +13,27 @@ def parse_front_matter(text: str) -> tuple[dict[str, str], str]:
 
     Returns (metadata, body). Raise ValueError if the front matter is missing.
     """
-    raise NotImplementedError("TODO day 1")
+    lines = text.splitlines()
+
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("Missing front matter: the document must start with '---'")
+
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        raise ValueError("Unclosed front matter: no closing '---' line") from None
+
+    meta: dict[str, str] = {}
+    for line in lines[1:end]:
+        if not line.strip():
+            continue
+        key, sep, value = line.partition(":")
+        if not sep:
+            raise ValueError(f"Bad front matter line (expected 'key: value'): {line!r}")
+        meta[key.strip()] = value.strip()
+
+    body = "\n".join(lines[end + 1 :]).strip()
+    return meta, body
 
 
 def split_sections(text: str) -> list[Chunk]:
