@@ -34,3 +34,15 @@ def test_split_sections_one_chunk_per_clause(sample_doc):
     assert "30 days" in chunks[0].text
     assert "Intro text" not in chunks[0].text
     assert chunks[0].version == "2026-01"
+    assert chunks[1].text == "Claims must be filed within 2 years."
+
+
+def test_split_sections_keeps_subheadings_inside_clause():
+    doc = "---\ndoc_id: d\nlang: en\nversion: v\n---\n## 1.1 Clause\nline\n### Note\nmore"
+    (chunk,) = split_sections(doc)
+    assert chunk.text == "line\n### Note\nmore"
+
+
+def test_split_sections_heading_without_title_raises():
+    with pytest.raises(ValueError, match="Bad heading"):
+        split_sections("---\ndoc_id: d\nlang: en\nversion: v\n---\n## 1.1\ntext")

@@ -42,7 +42,39 @@ def split_sections(text: str) -> list[Chunk]:
     Text before the first '##' heading is ignored. doc_id, lang and version come from the
     front matter.
     """
-    raise NotImplementedError("TODO day 1")
+    meta, body = parse_front_matter(text)
+
+    chunks: list[Chunk] = []
+    heading: tuple[str, str] | None = None
+    lines: list[str] = []
+
+    def flush() -> None:
+        if heading is not None:
+            section_id, title = heading
+            chunks.append(
+                Chunk(
+                    doc_id=meta["doc_id"],
+                    section_id=section_id,
+                    title=title,
+                    text="\n".join(lines).strip(),
+                    lang=meta["lang"],
+                    version=meta["version"],
+                )
+            )
+
+    for line in body.splitlines():
+        if line.startswith("## "):
+            flush()
+            parts = line[3:].split(maxsplit=1)
+            if len(parts) != 2:
+                raise ValueError(f"Bad heading (expected '## <section_id> <title>'): {line!r}")
+            heading = (parts[0], parts[1].strip())
+            lines = []
+        elif heading is not None:
+            lines.append(line)
+    flush()
+
+    return chunks
 
 
 def load_chunks(docs_dir: Path) -> list[Chunk]:
