@@ -16,5 +16,122 @@
     "start_date": "2026-06-01",
     "end_date": "2026-06-10",
     "riders": []
+  },
+  {
+    "policy_id": "NW-TRV-0003",
+    "holder_name": "林志豪",
+    "product": "travel-insurance",
+    "status": "active",
+    "start_date": "2026-11-10",
+    "end_date": "2026-11-30",
+    "riders": []
+  },
+  {
+    "policy_id": "NW-TRV-0004",
+    "holder_name": "Emily Wu",
+    "product": "travel-insurance",
+    "status": "cancelled",
+    "start_date": "2026-12-10",
+    "end_date": "2026-12-20",
+    "riders": ["trip-cancellation"]
+  },
+  {
+    "policy_id": "NW-TRV-0005",
+    "holder_name": "黃怡君",
+    "product": "travel-insurance",
+    "status": "active",
+    "start_date": "2026-12-15",
+    "end_date": "2027-01-05",
+    "riders": ["overseas-medical", "trip-cancellation"]
+  },
+  {
+    "policy_id": "NW-HLT-0001",
+    "holder_name": "張家豪",
+    "product": "health-insurance",
+    "status": "active",
+    "start_date": "2026-11-05",
+    "end_date": "2027-11-04",
+    "riders": []
+  },
+  {
+    "policy_id": "NW-HLT-0002",
+    "holder_name": "李淑芬",
+    "product": "health-insurance",
+    "status": "active",
+    "start_date": "2025-03-01",
+    "end_date": "2027-02-28",
+    "riders": ["outpatient"]
+  },
+  {
+    "policy_id": "NW-HLT-0003",
+    "holder_name": "Kevin Lee",
+    "product": "health-insurance",
+    "status": "expired",
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "riders": []
+  },
+  {
+    "policy_id": "NW-HLT-0004",
+    "holder_name": "吳佩珊",
+    "product": "health-insurance",
+    "status": "cancelled",
+    "start_date": "2026-02-01",
+    "end_date": "2027-01-31",
+    "riders": ["outpatient"]
+  },
+  {
+    "policy_id": "NW-AUT-0001",
+    "holder_name": "David Chen",
+    "product": "auto-insurance",
+    "status": "active",
+    "start_date": "2026-01-15",
+    "end_date": "2027-01-14",
+    "riders": ["rental-car"]
+  },
+  {
+    "policy_id": "NW-AUT-0002",
+    "holder_name": "周建宏",
+    "product": "auto-insurance",
+    "status": "active",
+    "start_date": "2026-11-15",
+    "end_date": "2027-11-14",
+    "riders": []
+  },
+  {
+    "policy_id": "NW-AUT-0003",
+    "holder_name": "蔡宜庭",
+    "product": "auto-insurance",
+    "status": "expired",
+    "start_date": "2025-05-01",
+    "end_date": "2026-04-30",
+    "riders": ["rental-car"]
+  },
+  {
+    "policy_id": "NW-HOM-0001",
+    "holder_name": "鄭雅文",
+    "product": "home-insurance",
+    "status": "active",
+    "start_date": "2026-03-01",
+    "end_date": "2027-02-28",
+    "riders": ["earthquake"]
+  },
+  {
+    "policy_id": "NW-HOM-0002",
+    "holder_name": "Michael Huang",
+    "product": "home-insurance",
+    "status": "active",
+    "start_date": "2026-07-01",
+    "end_date": "2027-06-30",
+    "riders": []
+  },
+  {
+    "policy_id": "NW-HOM-0003",
+    "holder_name": "許文彬",
+    "product": "home-insurance",
+    "status": "cancelled",
+    "start_date": "2026-01-01",
+    "end_date": "2026-12-31",
+    "riders": ["earthquake", "typhoon-flood"]
   }
 ]
