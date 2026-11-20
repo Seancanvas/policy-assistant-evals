@@ -9,8 +9,25 @@ def cosine_top_k(query: np.ndarray, matrix: np.ndarray, k: int) -> list[tuple[in
     """Return the k rows of matrix most similar to query, as (row_index, score), best first.
 
     query has shape (d,), matrix has shape (n, d). If k > n, return all n rows.
+    A zero row scores 0.0; a zero query has no direction, so it raises ValueError.
     """
-    raise NotImplementedError("TODO day 1")
+    if query.ndim != 1 or matrix.ndim != 2 or matrix.shape[1] != query.shape[0]:
+        raise ValueError(f"Shape mismatch: query {query.shape}, matrix {matrix.shape}")
+    if k <= 0:
+        return []
+
+    query_norm = np.linalg.norm(query)
+    if query_norm == 0:
+        raise ValueError("Query vector is all zeros")
+    row_norms = np.linalg.norm(matrix, axis=1)
+
+    dots = matrix @ query
+    scores = np.divide(
+        dots, row_norms * query_norm, out=np.zeros_like(dots, dtype=float), where=row_norms > 0
+    )
+
+    top = np.argsort(-scores, kind="stable")[:k]
+    return [(int(i), float(scores[i])) for i in top]
 
 
 class Retriever:
