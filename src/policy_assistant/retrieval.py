@@ -1,3 +1,5 @@
+import json
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -30,16 +32,42 @@ def cosine_top_k(query: np.ndarray, matrix: np.ndarray, k: int) -> list[tuple[in
     return [(int(i), float(scores[i])) for i in top]
 
 
+EmbedQuery = Callable[[str], np.ndarray]
+
+
+def openai_query_embedder(client, embedding_model: str) -> EmbedQuery:
+    """Return a str -> vector function backed by the OpenAI embeddings API."""
+
+    def embed(text: str) -> np.ndarray:
+        response = client.embeddings.create(model=embedding_model, input=[text])
+        return np.asarray(response.data[0].embedding, dtype=np.float32)
+
+    return embed
+
+
 class Retriever:
-    def __init__(self, chunks: list[Chunk], embeddings: np.ndarray, embed_query):
+    def __init__(self, chunks: list[Chunk], embeddings: np.ndarray, embed_query: EmbedQuery):
         """embed_query: a function str -> np.ndarray, so tests can pass a fake one."""
+        if len(chunks) != len(embeddings):
+            raise ValueError(f"{len(chunks)} chunks but {len(embeddings)} embedding rows")
         self.chunks = chunks
         self.embeddings = embeddings
         self.embed_query = embed_query
 
     @classmethod
-    def load(cls, index_dir: Path, embed_query) -> "Retriever":
-        raise NotImplementedError("TODO day 1: read chunks.json and embeddings.npy")
+    def load(cls, index_dir: Path, embed_query: EmbedQuery) -> "Retriever":
+        chunks_path = index_dir / "chunks.json"
+        vectors_path = index_dir / "embeddings.npy"
+        if not (chunks_path.exists() and vectors_path.exists()):
+            raise FileNotFoundError(
+                f"No index in {index_dir}. Run: uv run python -m policy_assistant.ingest"
+            )
+        records = json.loads(chunks_path.read_text(encoding="utf-8"))
+        chunks = [Chunk(**record) for record in records]
+        return cls(chunks, np.load(vectors_path), embed_query)
 
     def search(self, query: str, k: int) -> list[tuple[Chunk, float]]:
-        raise NotImplementedError("TODO day 1")
+        """Return the k chunks most similar to query, as (chunk, score), best first."""
+        vector = self.embed_query(query)
+        hits = cosine_top_k(vector, self.embeddings, k)
+        return [(self.chunks[i], score) for i, score in hits]
