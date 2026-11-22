@@ -27,7 +27,7 @@ def _trace(
         question="q",
         answer=Answer(status=status, answer=answer, citations=list(citations)),
         tool_calls=[
-            ToolCallRecord(name=t, arguments={}, output="{}", duration_ms=1) for t in tools
+            ToolCallRecord(turn=1, name=t, arguments={}, output="{}", duration_ms=1) for t in tools
         ],
     )
 

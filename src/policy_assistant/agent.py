@@ -83,6 +83,7 @@ def run_agent(
             output = runner.run(call.name, call.arguments)
             trace.tool_calls.append(
                 ToolCallRecord(
+                    turn=turn,
                     name=call.name,
                     arguments=_parse_arguments(call.arguments),
                     output=output,

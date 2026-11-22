@@ -151,3 +151,25 @@ def test_answer_with_extra_field_is_rejected():
     )
     trace = run_agent("q", FakeClient([bad]), FakeRunner(), model="m", max_turns=3)
     assert trace.answer.status == "error"
+
+
+def test_tool_calls_record_their_turn():
+    parallel = [
+        SimpleNamespace(
+            type="function_call",
+            name="get_policy",
+            arguments=json.dumps({"policy_id": "NW-TRV-0003"}),
+            call_id=f"call_{i}",
+        )
+        for i in ("a", "b")
+    ]
+    client = FakeClient(
+        [
+            SimpleNamespace(output=parallel, output_text="", usage=_usage()),
+            _tool_call_response("search_policy_docs", {"query": "rider"}, call_id="call_c"),
+            _final_response(),
+        ]
+    )
+    trace = run_agent("q", client, FakeRunner(), model="m", max_turns=5)
+    assert [r.turn for r in trace.tool_calls] == [1, 1, 2]
+    assert trace.turns == 3

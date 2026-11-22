@@ -39,6 +39,7 @@ class Answer(BaseModel):
 
 
 class ToolCallRecord(BaseModel):
+    turn: int  # 1-based; calls with the same turn were requested together
     name: str
     arguments: dict
     output: str
