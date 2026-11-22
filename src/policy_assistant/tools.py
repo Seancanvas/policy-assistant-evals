@@ -1,5 +1,6 @@
 """The two tools the agent can call. Both are read-only on purpose."""
 
+import json
 import re
 from pathlib import Path
 
@@ -49,11 +50,21 @@ TOOL_DEFINITIONS = [
 
 
 def load_policies(path: Path) -> dict[str, Policy]:
-    raise NotImplementedError("TODO day 1")
+    """Load our own data file. Bad data here is our bug, so this one does raise."""
+    policies: dict[str, Policy] = {}
+    for record in json.loads(path.read_text(encoding="utf-8")):
+        policy = Policy(**record)
+        if not validate_policy_id(policy.policy_id):
+            raise ValueError(f"Invalid policy_id in {path.name}: {policy.policy_id!r}")
+        if policy.policy_id in policies:
+            raise ValueError(f"Duplicate policy_id in {path.name}: {policy.policy_id!r}")
+        policies[policy.policy_id] = policy
+    return policies
 
 
-def validate_policy_id(policy_id: str) -> bool:
-    raise NotImplementedError("TODO day 1")
+def validate_policy_id(policy_id: object) -> bool:
+    # fullmatch, not match: '$' also matches before a trailing newline.
+    return isinstance(policy_id, str) and POLICY_ID_PATTERN.fullmatch(policy_id) is not None
 
 
 def get_policy(policies: dict[str, Policy], policy_id: str) -> dict:
@@ -61,12 +72,29 @@ def get_policy(policies: dict[str, Policy], policy_id: str) -> dict:
 
     Never raise for bad input: the model gets the error back and can tell the user honestly.
     """
-    raise NotImplementedError("TODO day 1")
+    if not validate_policy_id(policy_id):
+        return {"error": f"Invalid policy ID format: {policy_id!r}. Expected NW-XXX-0000."}
+    policy = policies.get(policy_id)
+    if policy is None:
+        return {"error": f"Policy {policy_id} not found."}
+    return policy.model_dump()
 
 
 def search_policy_docs(retriever: Retriever, query: str, k: int) -> dict:
     """Return {"results": [{"citation_id", "title", "text", "score"}, ...]}."""
-    raise NotImplementedError("TODO day 1")
+    if not isinstance(query, str) or not query.strip():
+        return {"error": "query must be a non-empty string."}
+    return {
+        "results": [
+            {
+                "citation_id": chunk.citation_id,
+                "title": chunk.title,
+                "text": chunk.text,
+                "score": round(score, 3),
+            }
+            for chunk, score in retriever.search(query.strip(), k)
+        ]
+    }
 
 
 class ToolRunner:
@@ -78,9 +106,28 @@ class ToolRunner:
         self.top_k = top_k
 
     def run(self, name: str, arguments_json: str) -> str:
-        """TODO day 2: parse arguments, call the tool, return json.dumps(result).
+        """Call the named tool and return its result as a JSON string.
 
-        Unknown tool names and invalid JSON become {"error": "..."}, not exceptions.
+        Unknown tool names, invalid JSON and missing arguments become {"error": "..."},
+        not exceptions. k comes from settings, not from the model, so cost and evals stay fixed.
         """
-        raise NotImplementedError("TODO day 2")
+        return json.dumps(self._dispatch(name, arguments_json), ensure_ascii=False)
+
+    def _dispatch(self, name: str, arguments_json: str) -> dict:
+        try:
+            args = json.loads(arguments_json)
+        except json.JSONDecodeError:
+            return {"error": "Invalid JSON arguments."}
+        if not isinstance(args, dict):
+            return {"error": "Arguments must be a JSON object."}
+
+        if name == "search_policy_docs":
+            if "query" not in args:
+                return {"error": "Missing argument: query."}
+            return search_policy_docs(self.retriever, args["query"], self.top_k)
+        if name == "get_policy":
+            if "policy_id" not in args:
+                return {"error": "Missing argument: policy_id."}
+            return get_policy(self.policies, args["policy_id"])
+        return {"error": f"Unknown tool: {name!r}."}
 
