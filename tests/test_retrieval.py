@@ -93,8 +93,7 @@ def _fake_client(vectors_by_text):
     def create(model, input):
         return SimpleNamespace(
             data=[
-                SimpleNamespace(index=i, embedding=vectors_by_text[t])
-                for i, t in enumerate(input)
+                SimpleNamespace(index=i, embedding=vectors_by_text[t]) for i, t in enumerate(input)
             ]
         )
 

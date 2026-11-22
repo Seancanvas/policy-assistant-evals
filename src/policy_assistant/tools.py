@@ -130,4 +130,3 @@ class ToolRunner:
                 return {"error": "Missing argument: policy_id."}
             return get_policy(self.policies, args["policy_id"])
         return {"error": f"Unknown tool: {name!r}."}
-

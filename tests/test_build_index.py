@@ -28,8 +28,7 @@ class FakeClient:
 
 
 def _chunk(section_id: str, text: str) -> Chunk:
-    return Chunk(doc_id="d", section_id=section_id, title="T", text=text, lang="zh",
-                 version="v")
+    return Chunk(doc_id="d", section_id=section_id, title="T", text=text, lang="zh", version="v")
 
 
 def test_writes_aligned_files(tmp_path):

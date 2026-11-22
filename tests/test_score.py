@@ -3,14 +3,26 @@ from policy_assistant.models import Answer, ToolCallRecord, Trace
 
 
 def _case(**overrides):
-    base = dict(id="T01", question="q", lang="zh", category="doc-only",
-                expected_citations=["travel-insurance#3.1"], expected_tools=["search_policy_docs"],
-                expected_status="answered", reference_answer="6 小時", must_include=["6"])
+    base = dict(
+        id="T01",
+        question="q",
+        lang="zh",
+        category="doc-only",
+        expected_citations=["travel-insurance#3.1"],
+        expected_tools=["search_policy_docs"],
+        expected_status="answered",
+        reference_answer="6 小時",
+        must_include=["6"],
+    )
     return Case(**(base | overrides))
 
 
-def _trace(status="answered", answer="超過 6 小時", citations=("travel-insurance#3.1",),
-           tools=("search_policy_docs",)):
+def _trace(
+    status="answered",
+    answer="超過 6 小時",
+    citations=("travel-insurance#3.1",),
+    tools=("search_policy_docs",),
+):
     return Trace(
         question="q",
         answer=Answer(status=status, answer=answer, citations=list(citations)),

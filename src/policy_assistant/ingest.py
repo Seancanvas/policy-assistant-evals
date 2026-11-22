@@ -2,6 +2,7 @@
 
 Run: uv run python -m policy_assistant.ingest
 """
+
 import hashlib
 import json
 from pathlib import Path
@@ -129,9 +130,7 @@ def _load_cache(index_dir: Path) -> dict[str, np.ndarray]:
     if len(records) != len(vectors):
         return {}  # Inconsistent index: rebuild everything rather than trust it.
     return {
-        r["content_hash"]: v
-        for r, v in zip(records, vectors, strict=True)
-        if "content_hash" in r
+        r["content_hash"]: v for r, v in zip(records, vectors, strict=True) if "content_hash" in r
     }
 
 
@@ -181,8 +180,10 @@ def main() -> None:
     settings = load_settings()
     chunks = load_chunks(DOCS_DIR)
     embedded = build_index(chunks, INDEX_DIR, OpenAI(), settings.embedding_model)
-    print(f"Indexed {len(chunks)} chunks into {INDEX_DIR} ({embedded} embedded, "
-          f"{len(chunks) - embedded} from cache)")
+    print(
+        f"Indexed {len(chunks)} chunks into {INDEX_DIR} ({embedded} embedded, "
+        f"{len(chunks) - embedded} from cache)"
+    )
 
 
 if __name__ == "__main__":
