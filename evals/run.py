@@ -15,7 +15,7 @@ from pathlib import Path
 from openai import APIError, OpenAI
 from pydantic import BaseModel
 
-from evals.judge import judge
+from evals.judge import evidence_from_trace, judge
 from evals.score import (
     Case,
     CaseScore,
@@ -53,19 +53,26 @@ def evaluate_case(
 
     retrieved = retrieved_citation_ids(trace)
     score = score_case(case, trace, retrieved)
+    score.judge_pass, score.judge_reason = judge_trace(case, trace, client, judge_model)
+    return CaseResult(case=case, trace=trace, retrieved_ids=retrieved, score=score)
 
+
+def judge_trace(case: Case, trace: Trace, client, judge_model: str) -> tuple[bool | None, str]:
+    """Judge one answer. None means unknown (the judge call failed), not a fail."""
     answer = trace.answer
     if answer is None or answer.status == "error":
-        score.judge_pass, score.judge_reason = False, "No answer to judge."
-    else:
-        try:
-            score.judge_pass, score.judge_reason = judge(
-                client, judge_model, case.question, case.reference_answer, answer.answer
-            )
-        except APIError as exc:
-            score.judge_reason = f"Judge API error: {exc}"  # judge_pass stays None
-
-    return CaseResult(case=case, trace=trace, retrieved_ids=retrieved, score=score)
+        return False, "No answer to judge."
+    try:
+        return judge(
+            client,
+            judge_model,
+            case.question,
+            case.reference_answer,
+            answer.answer,
+            evidence_from_trace(trace),
+        )
+    except APIError as exc:
+        return None, f"Judge API error: {exc}"
 
 
 def run_all(
@@ -193,12 +200,13 @@ class RunReport(BaseModel):
     top_k: int
     max_turns: int
     repeat: int = 1
+    rejudged_from: str | None = None  # set by rejudge.py: same answers, new judge
     summary: dict[str, float]
     stats: dict[str, float]
     results: list[CaseResult]
 
 
-def _label(value: str) -> str:
+def parse_label(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
         raise argparse.ArgumentTypeError("use only letters, digits, '-' and '_'")
     return value
@@ -213,7 +221,7 @@ def _positive_int(value: str) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--label", required=True, type=_label)
+    parser.add_argument("--label", required=True, type=parse_label)
     parser.add_argument("--cases", default="evals/cases.jsonl")
     parser.add_argument("--only", nargs="*", help="Run only these case IDs.")
     parser.add_argument("--repeat", type=_positive_int, default=1, help="Runs per case.")

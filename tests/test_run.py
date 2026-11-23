@@ -211,3 +211,12 @@ def test_save_report_never_overwrites(tmp_path):
     with pytest.raises(FileExistsError):
         save_report(path, "second")
     assert path.read_text(encoding="utf-8") == "first"
+
+
+def test_judge_sees_the_retrieved_clause_text():
+    _, client = _evaluate(
+        _case(category="doc-only", expected_tools=["search_policy_docs"]),
+        [_tool_call("search_policy_docs", {"query": "delay"}), _answer(), _verdict()],
+    )
+    judge_input = client.calls[-1]["input"]
+    assert "<evidence>\n[travel-insurance#3.1]" in judge_input

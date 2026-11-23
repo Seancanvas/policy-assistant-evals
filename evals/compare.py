@@ -22,6 +22,7 @@ CONFIG_FIELDS = [
     "top_k",
     "max_turns",
     "repeat",
+    "rejudged_from",
 ]
 
 
