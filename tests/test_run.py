@@ -5,7 +5,16 @@ from types import SimpleNamespace
 import openai
 import pytest
 
-from evals.run import COLUMNS, choose_cases, evaluate_case, format_table, output_path, run_stats
+from evals.run import (
+    COLUMNS,
+    choose_cases,
+    evaluate_case,
+    format_table,
+    output_path,
+    run_all,
+    run_stats,
+    save_report,
+)
 from evals.score import METRICS, Case, summarize
 
 
@@ -169,3 +178,36 @@ def test_format_table_marks_none_with_dash():
 def test_output_path_has_time_and_label():
     path = output_path("baseline", datetime(2026, 11, 23, 9, 5))
     assert path.name == "2026-11-23_0905_baseline.json"
+
+
+def test_run_all_repeats_each_case_and_numbers_attempts():
+    seen = []
+
+    def evaluate(case):
+        seen.append(case.id)
+        result, _ = _evaluate(case, [_answer(), _verdict()])
+        return result
+
+    results = run_all([_case(id="T01"), _case(id="T02")], repeat=3, evaluate=evaluate)
+    assert seen == ["T01"] * 3 + ["T02"] * 3
+    assert [r.attempt for r in results] == [1, 2, 3, 1, 2, 3]
+
+
+def test_table_shows_pass_counts_for_repeated_runs():
+    passed, _ = _evaluate(_case(), [_answer(), _verdict(passed=True)])
+    failed, _ = _evaluate(_case(), [_answer(), _verdict(passed=False)])
+    table = format_table([passed, failed], summarize([passed.score, failed.score]))
+    lines = table.splitlines()
+    assert len(lines) == 3  # header, one row for T01, rate
+    row = lines[1].split()
+    assert row[-1] == "1/2"  # judge
+    assert row[2] == "-"  # retrieval_hit is None in both runs
+    assert "50%" in lines[-1]
+
+
+def test_save_report_never_overwrites(tmp_path):
+    path = tmp_path / "runs" / "x.json"
+    save_report(path, "first")
+    with pytest.raises(FileExistsError):
+        save_report(path, "second")
+    assert path.read_text(encoding="utf-8") == "first"

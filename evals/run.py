@@ -8,6 +8,7 @@ import argparse
 import re
 import statistics
 import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +36,7 @@ class CaseResult(BaseModel):
     trace: Trace
     retrieved_ids: list[str]
     score: CaseScore
+    attempt: int = 1  # 1..repeat; the same case can run several times
 
 
 def evaluate_case(
@@ -64,6 +66,24 @@ def evaluate_case(
             score.judge_reason = f"Judge API error: {exc}"  # judge_pass stays None
 
     return CaseResult(case=case, trace=trace, retrieved_ids=retrieved, score=score)
+
+
+def run_all(
+    cases: list[Case], repeat: int, evaluate: Callable[[Case], CaseResult]
+) -> list[CaseResult]:
+    """Evaluate every case `repeat` times, case by case, and number the attempts."""
+    results = []
+    total = len(cases) * repeat
+    for case in cases:
+        for attempt in range(1, repeat + 1):
+            print(
+                f"[{len(results) + 1}/{total}] {case.id} #{attempt} {case.question[:40]}",
+                flush=True,
+            )
+            result = evaluate(case)
+            result.attempt = attempt
+            results.append(result)
+    return results
 
 
 def choose_cases(cases: list[Case], only: list[str] | None) -> list[Case]:
@@ -111,8 +131,14 @@ def git_commit() -> str:
     return f"{sha}-dirty" if dirty else sha
 
 
-def _mark(value: bool | None) -> str:
-    return "-" if value is None else ("Y" if value else "N")
+def _cell(values: list[bool | None]) -> str:
+    """One run: Y, N or -. Several runs: passes/runs, e.g. 3/5. None values are not counted."""
+    known = [v for v in values if v is not None]
+    if not known:
+        return "-"
+    if len(values) == 1:
+        return "Y" if known[0] else "N"
+    return f"{sum(known)}/{len(known)}"
 
 
 # Column header -> metric. Short so one case fits on one line.
@@ -131,9 +157,14 @@ COLUMNS = {
 def format_table(results: list[CaseResult], summary: dict[str, float]) -> str:
     header = f"{'case':<5} {'category':<10} " + " ".join(f"{h:>5}" for h in COLUMNS)
     lines = [header]
+    by_case: dict[str, list[CaseResult]] = {}
     for r in results:
-        marks = " ".join(f"{_mark(getattr(r.score, m)):>5}" for m in COLUMNS.values())
-        lines.append(f"{r.case.id:<5} {r.case.category:<10} {marks}")
+        by_case.setdefault(r.case.id, []).append(r)
+    for case_id, attempts in by_case.items():
+        marks = " ".join(
+            f"{_cell([getattr(r.score, m) for r in attempts]):>5}" for m in COLUMNS.values()
+        )
+        lines.append(f"{case_id:<5} {attempts[0].case.category:<10} {marks}")
     rates = " ".join(
         f"{summary[m]:>5.0%}" if m in summary else f"{'-':>5}" for m in COLUMNS.values()
     )
@@ -145,6 +176,13 @@ def output_path(label: str, now: datetime) -> Path:
     return RUNS_DIR / f"{now:%Y-%m-%d_%H%M}_{label}.json"
 
 
+def save_report(path: Path, text: str) -> None:
+    """Write a new run file. Never overwrite one: runs are evidence."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as f:
+        f.write(text)
+
+
 class RunReport(BaseModel):
     label: str
     created_at: str
@@ -154,6 +192,7 @@ class RunReport(BaseModel):
     embedding_model: str
     top_k: int
     max_turns: int
+    repeat: int = 1
     summary: dict[str, float]
     stats: dict[str, float]
     results: list[CaseResult]
@@ -165,12 +204,25 @@ def _label(value: str) -> str:
     return value
 
 
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return number
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--label", required=True, type=_label)
     parser.add_argument("--cases", default="evals/cases.jsonl")
     parser.add_argument("--only", nargs="*", help="Run only these case IDs.")
+    parser.add_argument("--repeat", type=_positive_int, default=1, help="Runs per case.")
     args = parser.parse_args()
+
+    now = datetime.now()
+    path = output_path(args.label, now)
+    if path.exists():  # check before spending money, not after
+        parser.error(f"{path.relative_to(ROOT)} already exists; use another label.")
 
     settings = load_settings()
     cases = choose_cases(load_cases(Path(args.cases)), args.only)
@@ -178,16 +230,14 @@ def main() -> None:
     retriever = Retriever.load(INDEX_DIR, openai_query_embedder(client, settings.embedding_model))
     runner = ToolRunner(retriever, load_policies(POLICIES_PATH), settings.top_k)
 
-    results = []
-    for i, case in enumerate(cases, 1):
-        print(f"[{i}/{len(cases)}] {case.id} {case.question[:50]}", flush=True)
-        results.append(
-            evaluate_case(
-                case, client, runner, settings.model, settings.max_turns, settings.judge_model
-            )
-        )
+    results = run_all(
+        cases,
+        args.repeat,
+        lambda case: evaluate_case(
+            case, client, runner, settings.model, settings.max_turns, settings.judge_model
+        ),
+    )
 
-    now = datetime.now()
     summary = summarize([r.score for r in results])
     report = RunReport(
         label=args.label,
@@ -198,13 +248,12 @@ def main() -> None:
         embedding_model=settings.embedding_model,
         top_k=settings.top_k,
         max_turns=settings.max_turns,
+        repeat=args.repeat,
         summary=summary,
         stats=run_stats(results),
         results=results,
     )
-    path = output_path(args.label, now)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    save_report(path, report.model_dump_json(indent=2))
 
     print()
     print(format_table(results, summary))
