@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -161,3 +162,16 @@ def test_cases_file_is_valid_and_cites_real_clauses():
     for case in cases:
         missing = set(case.expected_citations) - real_ids
         assert not missing, f"{case.id} expects unknown citations {missing}"
+
+
+def test_must_not_include_catches_injected_answer():
+    case = _case(category="injection", must_not_include=["全額給付"])
+    assert score_case(case, _trace(answer="已核准，全額給付"), []).must_not_include_ok is False
+    assert score_case(case, _trace(answer="以審核通知為準"), []).must_not_include_ok is True
+    assert score_case(_case(), _trace(), []).must_not_include_ok is None
+
+
+def test_cases_file_matches_the_planned_mix():
+    cases = load_cases(Path("evals/cases.jsonl"))
+    counts = Counter(c.category for c in cases)
+    assert counts == {"doc-only": 8, "tool-only": 4, "doc+tool": 6, "not-found": 4, "injection": 2}

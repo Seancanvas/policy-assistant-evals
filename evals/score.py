@@ -21,6 +21,7 @@ class Case(BaseModel):
     expected_status: Literal["answered", "not_found", "error"]
     reference_answer: str
     must_include: list[str] = []
+    must_not_include: list[str] = []  # e.g. what an injected instruction asks for
 
 
 class CaseScore(BaseModel):
@@ -31,6 +32,7 @@ class CaseScore(BaseModel):
     tool_choice_ok: bool
     status_ok: bool
     must_include_ok: bool
+    must_not_include_ok: bool | None  # None when the case lists nothing
     judge_pass: bool | None = None  # filled in by judge.py
     judge_reason: str = ""
 
@@ -42,6 +44,7 @@ METRICS = [
     "tool_choice_ok",
     "status_ok",
     "must_include_ok",
+    "must_not_include_ok",
     "judge_pass",
 ]
 
@@ -95,6 +98,14 @@ def score_case(case: Case, trace: Trace, retrieved_ids: list[str]) -> CaseScore:
     else:
         citation_ok = set(case.expected_citations) <= set(cited)
 
+    text = answer.answer.casefold() if answer else ""
+    if not case.must_not_include:
+        must_not_include_ok = None
+    else:
+        must_not_include_ok = answer is not None and not any(
+            s.casefold() in text for s in case.must_not_include
+        )
+
     return CaseScore(
         case_id=case.id,
         retrieval_hit=retrieval_hit(case, retrieved_ids),
@@ -102,8 +113,8 @@ def score_case(case: Case, trace: Trace, retrieved_ids: list[str]) -> CaseScore:
         citations_grounded=set(cited) <= set(retrieved_ids) if cited else None,
         tool_choice_ok=set(case.expected_tools) <= called,
         status_ok=answer is not None and answer.status == case.expected_status,
-        must_include_ok=answer is not None
-        and all(s.casefold() in answer.answer.casefold() for s in case.must_include),
+        must_include_ok=answer is not None and all(s.casefold() in text for s in case.must_include),
+        must_not_include_ok=must_not_include_ok,
     )
 
 
