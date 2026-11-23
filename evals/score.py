@@ -1,18 +1,24 @@
 """Deterministic scoring for one eval case. The LLM judge lives in judge.py."""
 
-from pydantic import BaseModel
+import json
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
 
 from policy_assistant.models import Trace
 
 
 class Case(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     question: str
-    lang: str
-    category: str  # doc-only | tool-only | doc+tool | not-found | injection
-    expected_citations: list[str]
+    lang: Literal["zh", "en"]
+    category: Literal["doc-only", "tool-only", "doc+tool", "not-found", "injection"]
+    expected_citations: list[str]  # clause IDs only, e.g. "travel-insurance#3.1"
     expected_tools: list[str]
-    expected_status: str
+    expected_status: Literal["answered", "not_found", "error"]
     reference_answer: str
     must_include: list[str] = []
 
@@ -21,6 +27,7 @@ class CaseScore(BaseModel):
     case_id: str
     retrieval_hit: bool | None  # None when the case expects no citations
     citation_ok: bool | None
+    citations_grounded: bool | None  # None when the answer cites nothing
     tool_choice_ok: bool
     status_ok: bool
     must_include_ok: bool
@@ -28,21 +35,83 @@ class CaseScore(BaseModel):
     judge_reason: str = ""
 
 
+METRICS = [
+    "retrieval_hit",
+    "citation_ok",
+    "citations_grounded",
+    "tool_choice_ok",
+    "status_ok",
+    "must_include_ok",
+    "judge_pass",
+]
+
+
+def load_cases(path: Path) -> list[Case]:
+    cases = [
+        Case.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    ids = [c.id for c in cases]
+    if len(ids) != len(set(ids)):
+        raise ValueError(f"Duplicate case IDs in {path.name}")
+    return cases
+
+
+def retrieved_citation_ids(trace: Trace) -> list[str]:
+    """Every clause ID that search_policy_docs returned during this run, in order, no repeats."""
+    seen: dict[str, None] = {}
+    for call in trace.tool_calls:
+        if call.name != "search_policy_docs":
+            continue
+        try:
+            results = json.loads(call.output).get("results", [])
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        for result in results:
+            seen.setdefault(result["citation_id"], None)
+    return list(seen)
+
+
 def retrieval_hit(case: Case, retrieved_ids: list[str]) -> bool | None:
     """Did every expected citation appear among the retrieved clauses?"""
-    raise NotImplementedError("TODO day 2")
+    if not case.expected_citations:
+        return None
+    return set(case.expected_citations) <= set(retrieved_ids)
 
 
 def score_case(case: Case, trace: Trace, retrieved_ids: list[str]) -> CaseScore:
-    """TODO day 2:
-    - citation_ok: the answer cites every expected citation (None if none expected).
-    - tool_choice_ok: every expected tool was called at least once.
-    - status_ok: answer.status == expected_status; a missing answer counts as False.
-    - must_include_ok: every must_include string appears in answer.answer.
+    """Score one run against its case. A missing answer fails every answer-based check.
+
+    citation_ok asks "did it cite what it should?"; citations_grounded asks "is every citation
+    something the tools actually returned?" A policy ID or an invented clause fails the second.
     """
-    raise NotImplementedError("TODO day 2")
+    answer = trace.answer
+    cited = answer.citations if answer else []
+    called = {call.name for call in trace.tool_calls}
+
+    if not case.expected_citations:
+        citation_ok = None
+    else:
+        citation_ok = set(case.expected_citations) <= set(cited)
+
+    return CaseScore(
+        case_id=case.id,
+        retrieval_hit=retrieval_hit(case, retrieved_ids),
+        citation_ok=citation_ok,
+        citations_grounded=set(cited) <= set(retrieved_ids) if cited else None,
+        tool_choice_ok=set(case.expected_tools) <= called,
+        status_ok=answer is not None and answer.status == case.expected_status,
+        must_include_ok=answer is not None
+        and all(s.casefold() in answer.answer.casefold() for s in case.must_include),
+    )
 
 
 def summarize(scores: list[CaseScore]) -> dict[str, float]:
-    """Rate per metric, ignoring None values. For example {"tool_choice_ok": 0.875, ...}."""
-    raise NotImplementedError("TODO day 2")
+    """Rate per metric, ignoring None values. A metric with no values at all is left out."""
+    summary: dict[str, float] = {}
+    for metric in METRICS:
+        values = [v for s in scores if (v := getattr(s, metric)) is not None]
+        if values:
+            summary[metric] = sum(values) / len(values)
+    return summary
