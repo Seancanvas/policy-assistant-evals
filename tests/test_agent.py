@@ -173,3 +173,10 @@ def test_tool_calls_record_their_turn():
     trace = run_agent("q", client, FakeRunner(), model="m", max_turns=5)
     assert [r.turn for r in trace.tool_calls] == [1, 1, 2]
     assert trace.turns == 3
+
+
+def test_instructions_ask_for_bilingual_search_queries():
+    # Guards the cross-lingual retrieval fix; the eval measures whether it works.
+    client = FakeClient([_final_response()])
+    run_agent("q", client, FakeRunner(), model="m", max_turns=3)
+    assert "in both languages" in client.calls[0]["instructions"]
